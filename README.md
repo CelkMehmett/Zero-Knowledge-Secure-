@@ -2,6 +2,10 @@
 
 A Zero-Knowledge style secure storage package for Flutter/Dart applications with hardware-backed platform KMS integration.
 
+[![pub package](https://img.shields.io/pub/v/zk_vault.svg)](https://pub.dev/packages/zk_vault)
+
+**📦 [View on pub.dev](https://pub.dev/packages/zk_vault)**
+
 ## Features
 
 - **AES-256-GCM Encryption**: All data is encrypted using industry-standard AES-256-GCM
