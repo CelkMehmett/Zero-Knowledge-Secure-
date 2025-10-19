@@ -13,9 +13,9 @@ abstract class PlatformKMS {
   
   /// Unwraps a previously wrapped key using platform KMS.
   /// 
-  /// May prompt for biometric authentication if the key was wrapped with
-  /// biometric requirement.
-  Future<Uint8List> unwrapKey(Uint8List wrappedKey);
+  /// If [requireBiometric] is true, the platform implementation should prompt
+  /// for biometric authentication before returning the unwrapped key.
+  Future<Uint8List> unwrapKey(Uint8List wrappedKey, {bool requireBiometric = false});
   
   /// Returns true if the platform KMS is hardware-backed.
   Future<bool> isHardwareBacked();
@@ -61,7 +61,7 @@ class MockPlatformKMS implements PlatformKMS {
   }
   
   @override
-  Future<Uint8List> unwrapKey(Uint8List wrappedKey) async {
+  Future<Uint8List> unwrapKey(Uint8List wrappedKey, {bool requireBiometric = false}) async {
     if (wrappedKey.length != _keySize + 4) {
       throw ArgumentError('Invalid wrapped key format');
     }
@@ -74,7 +74,11 @@ class MockPlatformKMS implements PlatformKMS {
     final bool requiresBiometric = wrappedKey[2] == 0x01;
     if (requiresBiometric) {
       // In a real implementation, this would trigger biometric prompt
-      // For mock, we just simulate success
+      // For mock, we just simulate success. If caller requested biometric
+      // they can pass requireBiometric=true to simulate that path.
+      if (requireBiometric) {
+        // simulate user consent
+      }
     }
 
     // Mock unwrapping: XOR with mock secret

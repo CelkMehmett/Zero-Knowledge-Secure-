@@ -228,7 +228,7 @@ class ZKVault {
   final Uint8List wrappedKey = Uint8List.fromList(intList);
     
     try {
-      _masterKey = await _kms.unwrapKey(wrappedKey);
+      _masterKey = await _kms.unwrapKey(wrappedKey, requireBiometric: _requiresBiometric);
     } catch (e) {
       throw IntegrityException('Failed to unwrap master key: $e');
     }

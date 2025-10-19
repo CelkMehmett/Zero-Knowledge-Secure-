@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zk_vault/zk_vault.dart';
-import 'package:zk_vault/src/platform_kms.dart';
 
 void main() {
   group('ZKVault', () {
@@ -250,7 +249,7 @@ void main() {
     test('rejects invalid wrapped keys', () async {
   final Uint8List invalidWrapped = Uint8List(10); // Too short
       
-      expect(() => kms.unwrapKey(invalidWrapped), throwsArgumentError);
+  expect(() => kms.unwrapKey(invalidWrapped), throwsArgumentError);
     });
   });
   

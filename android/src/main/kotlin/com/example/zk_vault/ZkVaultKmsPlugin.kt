@@ -23,6 +23,8 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import java.util.concurrent.Executor
 import java.security.PrivateKey
+import java.security.KeyFactory
+import android.util.Log
 
 /** ZkVaultKmsPlugin: Android KeyStore-backed minimal implementation */
 class ZkVaultKmsPlugin: FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler {
@@ -95,20 +97,41 @@ class ZkVaultKmsPlugin: FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
                 return
               }
 
+              // Try to initialize the cipher. If the key requires user authentication,
+              // this may throw UserNotAuthenticatedException. In that case, fall back
+              // to prompting for biometric auth first, then initialize the cipher
+              // and decrypt inside the success callback.
               val cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
               val oaepParams = OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec("SHA-256"), PSource.PSpecified.DEFAULT)
-              cipher.init(Cipher.DECRYPT_MODE, privateKey, oaepParams)
+
+              var initSucceeded = false
+              try {
+                cipher.init(Cipher.DECRYPT_MODE, privateKey, oaepParams)
+                initSucceeded = true
+              } catch (e: Exception) {
+                // Initialization failed likely due to UserNotAuthenticatedException.
+                initSucceeded = false
+              }
 
               pendingResult = result
               pendingWrapped = wrapped
-              pendingCipher = cipher
+              pendingCipher = if (initSucceeded) cipher else null
 
               val executor: Executor = ContextCompat.getMainExecutor(act)
               val prompt = BiometricPrompt(act as FragmentActivity, executor, object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(resultAuth: BiometricPrompt.AuthenticationResult) {
                   super.onAuthenticationSucceeded(resultAuth)
                   try {
-                    val c = resultAuth.cryptoObject?.cipher ?: pendingCipher
+                    var c = resultAuth.cryptoObject?.cipher ?: pendingCipher
+                    if (c == null) {
+                      // Cipher wasn't initialized before auth; initialize now using the private key
+                      val ks2 = KeyStore.getInstance("AndroidKeyStore")
+                      ks2.load(null)
+                      val priv2 = ks2.getKey(KEY_ALIAS, null) as java.security.PrivateKey
+                      val c2 = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+                      c2.init(Cipher.DECRYPT_MODE, priv2, oaepParams)
+                      c = c2
+                    }
                     val decrypted = c!!.doFinal(pendingWrapped)
                     pendingResult?.success(decrypted)
                   } catch (e: Exception) {
@@ -130,7 +153,6 @@ class ZkVaultKmsPlugin: FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
 
                 override fun onAuthenticationFailed() {
                   super.onAuthenticationFailed()
-                  // keep waiting or fail fast
                 }
               })
 
@@ -140,7 +162,12 @@ class ZkVaultKmsPlugin: FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
                 .setNegativeButtonText("Cancel")
                 .build()
 
-              prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+              if (initSucceeded) {
+                prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+              } else {
+                // Authenticate without a CryptoObject; we'll initialize the cipher after success.
+                prompt.authenticate(info)
+              }
             } catch (e: Exception) {
               result.error("AUTH_SETUP_FAILED", e.message, null)
             }
@@ -166,7 +193,7 @@ class ZkVaultKmsPlugin: FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
     context = null
   }
 
-  private fun ensureKeyPair(): java.security.KeyPair {
+  private fun ensureKeyPair(requireBiometric: Boolean = false): java.security.KeyPair {
     val ks = KeyStore.getInstance("AndroidKeyStore")
     ks.load(null)
     val existing = ks.getEntry(KEY_ALIAS, null)
@@ -185,15 +212,50 @@ class ZkVaultKmsPlugin: FlutterPlugin, ActivityAware, MethodChannel.MethodCallHa
       setKeySize(2048)
       setDigests(KeyProperties.DIGEST_SHA256)
       setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
-      // Note: user authentication / biometric can be added here in future
+      // Add user authentication requirement when requested. Using
+      // a validity duration of 0 forces auth for every use (biometric each time).
+      if (requireBiometric) {
+        try {
+          if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // API 30+: prefer setUserAuthenticationParameters for finer control
+            try {
+              val timeoutSeconds = 0
+              setUserAuthenticationParameters(timeoutSeconds, KeyProperties.AUTH_BIOMETRIC_STRONG)
+              Log.d("ZkVaultKmsPlugin", "Configured user auth (params) for $KEY_ALIAS")
+            } catch (e: Exception) {
+              // Fall back to older API if unavailable
+              setUserAuthenticationRequired(true)
+              setUserAuthenticationValidityDurationSeconds(0)
+              Log.d("ZkVaultKmsPlugin", "Fell back to setUserAuthenticationRequired for $KEY_ALIAS: ${e.message}")
+            }
+          } else {
+            setUserAuthenticationRequired(true)
+            setUserAuthenticationValidityDurationSeconds(0)
+            Log.d("ZkVaultKmsPlugin", "Configured user auth (legacy) for $KEY_ALIAS")
+          }
+        } catch (e: Exception) {
+          Log.w("ZkVaultKmsPlugin", "Failed to configure user authentication for $KEY_ALIAS: ${e.message}")
+        }
+      }
+
+      // Try to prefer StrongBox when available (API 28+). This is optional and
+      // may fail on devices without StrongBox support; ignore failures.
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+        try {
+          setIsStrongBoxBacked(true)
+          Log.d("ZkVaultKmsPlugin", "Requested StrongBox backing for $KEY_ALIAS")
+        } catch (e: Exception) {
+          Log.d("ZkVaultKmsPlugin", "StrongBox not available for $KEY_ALIAS: ${e.message}")
+        }
+      }
     }
 
     kpg.initialize(specBuilder.build())
     return kpg.generateKeyPair()
   }
 
-  private fun wrapKey(keyBytes: ByteArray): ByteArray {
-    val kp = ensureKeyPair()
+  private fun wrapKey(keyBytes: ByteArray, requireBiometric: Boolean = false): ByteArray {
+    val kp = ensureKeyPair(requireBiometric)
     val pub = kp.public
     val cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
     val oaepParams = OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec("SHA-256"), PSource.PSpecified.DEFAULT)

@@ -8,3 +8,7 @@ allprojects {
         mavenCentral()
     }
 }
+
+// Note: The Android module may need androidx.biometric dependency in its build.gradle
+// Add the following to your module-level build.gradle dependencies section where appropriate:
+// implementation 'androidx.biometric:biometric:1.2.0'

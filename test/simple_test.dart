@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zk_vault/zk_vault.dart';
-import 'package:zk_vault/src/platform_kms.dart';
 
 void main() {
   test('simple vault test', () async {

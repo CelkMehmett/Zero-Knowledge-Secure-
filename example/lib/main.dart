@@ -30,8 +30,10 @@ class VaultDemoScreen extends StatefulWidget {
 
 class _VaultDemoScreenState extends State<VaultDemoScreen> {
   ZKVault? _vault;
+  // PlatformKMS instance is constructed when needed; no persistent field required.
   final List<String> _logs = <String>[];
   bool _isLoading = false;
+  bool _useNativeKms = true;
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +48,33 @@ class _VaultDemoScreenState extends State<VaultDemoScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Text('KMS Selection', style: TextStyle(fontWeight: FontWeight.bold)),
+                        SwitchListTile(
+                          title: Text(_useNativeKms ? 'Native KMS (Hardware)' : 'Mock KMS (Testing)'),
+                          subtitle: Text(_useNativeKms 
+                            ? 'Uses Android Keystore / iOS Secure Enclave' 
+                            : 'Software-only implementation for testing'),
+                          value: _useNativeKms,
+                          onChanged: _vault == null ? (bool value) {
+                            setState(() => _useNativeKms = value);
+                          } : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _checkCapabilities,
+                  child: const Text('Check Hardware Capabilities'),
+                ),
+                const SizedBox(height: 8),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _openVault,
                   child: Text(_vault == null ? 'Open Vault' : 'Vault Opened'),
@@ -126,24 +155,84 @@ class _VaultDemoScreenState extends State<VaultDemoScreen> {
     });
   }
 
+  Future<void> _checkCapabilities() async {
+    setState(() => _isLoading = true);
+    try {
+      _log('Checking hardware capabilities...');
+      
+      if (_useNativeKms) {
+        try {
+          final PlatformKMS kms = NativePlatformKMS();
+          final bool hardwareBacked = await kms.isHardwareBacked();
+          final bool biometricAvailable = await kms.isBiometricAvailable();
+          
+          _log('✓ Native KMS capabilities:');
+          _log('  - Hardware-backed: $hardwareBacked');
+          _log('  - Biometric available: $biometricAvailable');
+          
+          if (!hardwareBacked) {
+            _log('⚠ Warning: Hardware KMS not available on this device');
+          }
+          if (!biometricAvailable) {
+            _log('⚠ Warning: Biometric authentication not available');
+          }
+        } on SecureEnclaveUnavailableException catch (e) {
+          _log('✗ Native KMS unavailable: $e');
+          _log('  Consider using Mock KMS for testing');
+        }
+      } else {
+  final PlatformKMS kms = MockPlatformKMS();
+  final bool hardwareBacked = await kms.isHardwareBacked();
+  final bool biometricAvailable = await kms.isBiometricAvailable();
+        
+        _log('✓ Mock KMS capabilities:');
+        _log('  - Hardware-backed: $hardwareBacked (simulated)');
+        _log('  - Biometric available: $biometricAvailable (simulated)');
+        _log('  - Note: Mock KMS is for testing only');
+      }
+    } catch (e) {
+      _log('✗ Failed to check capabilities: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _openVault() async {
     setState(() => _isLoading = true);
     try {
-      _log('Opening vault with biometric requirement...');
+      _log('Opening vault...');
+      _log('  - KMS: ${_useNativeKms ? "Native (Hardware)" : "Mock (Testing)"}');
+      _log('  - Biometric required: true');
+      
+      PlatformKMS kms;
+      if (_useNativeKms) {
+        kms = NativePlatformKMS();
+        _log('  - Using Android Keystore / iOS Secure Enclave');
+      } else {
+        kms = MockPlatformKMS();
+        _log('  - Using software-only mock implementation');
+      }
       
       // Open vault with biometric requirement
-      // Note: This uses MockPlatformKMS so it will work without real hardware
       _vault = await ZKVault.open(
         'demo_vault',
         requireBiometric: true,
+        kms: kms,
       );
       
       _log('✓ Vault opened successfully');
       _log('  - Vault ID: demo_vault');
-      _log('  - Biometric required: true');
-      _log('  - Using MockPlatformKMS for demonstration');
+      
+      // Show additional info about the KMS being used
+      if (_useNativeKms) {
+        final bool hardwareBacked = await kms.isHardwareBacked();
+        _log('  - Hardware-backed: $hardwareBacked');
+      }
     } catch (e) {
       _log('✗ Failed to open vault: $e');
+      if (e is SecureEnclaveUnavailableException) {
+        _log('  Try switching to Mock KMS or check device capabilities');
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -181,7 +270,7 @@ class _VaultDemoScreenState extends State<VaultDemoScreen> {
       _log('Retrieving stored data...');
       
       // Retrieve the greeting
-      final Uint8List? greeting = await _vault!.get('greeting');
+  final Uint8List? greeting = await _vault!.get('greeting');
       if (greeting != null) {
         final String greetingText = String.fromCharCodes(greeting);
         _log('✓ Retrieved greeting: "$greetingText"');
@@ -190,7 +279,7 @@ class _VaultDemoScreenState extends State<VaultDemoScreen> {
       }
       
       // Retrieve the secret
-      final Uint8List? secret = await _vault!.get('secret');
+  final Uint8List? secret = await _vault!.get('secret');
       if (secret != null) {
         final String secretText = String.fromCharCodes(secret);
         _log('✓ Retrieved secret: "$secretText"');
