@@ -1,8 +1,8 @@
 name: zk_vault
 description: Zero-Knowledge style secure storage for Flutter/Dart applications with platform KMS integration
-version: 0.1.2
-homepage: https://github.com/your-org/zk_vault
-repository: https://github.com/your-org/zk_vault
+version: 0.1.3
+homepage: https://github.com/CelkMehmett/Zero-Knowledge-Secure-
+repository: https://github.com/CelkMehmett/Zero-Knowledge-Secure-
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

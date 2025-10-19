@@ -33,3 +33,9 @@ All notable changes to this project will be documented in this file.
 - Small example app and migration helper type fixes
 
 - All unit tests pass and analyzer reports no issues
+
+## 0.1.3 - 2025-10-19
+
+- Bump patch version to 0.1.3
+- Update `pubspec.yaml` metadata (homepage, repository)
+- Prep README and CI notes for publish (no behavioral changes)
