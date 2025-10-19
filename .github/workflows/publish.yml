@@ -10,16 +10,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          sdk: 'stable'
+          channel: 'stable'
       - name: Install dependencies
-        run: dart pub get
+        run: flutter pub get
       - name: Analyze
-        run: dart analyze
+        run: flutter analyze
       - name: Run tests
-        run: dart test --reporter=expanded
+        run: flutter test --reporter=expanded
       - name: Publish to pub.dev
         env:
           PUB_DEV_TOKEN: ${{ secrets.PUB_DEV_TOKEN }}
