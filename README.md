@@ -282,3 +282,40 @@ Published at: https://pub.dev/packages/zk_vault
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Integration tests (how-to)
+
+Use these quick steps to run the integration tests locally. The `example/` app contains the integration test harness under `example/integration_test/`.
+
+Android emulator
+
+```bash
+# Start an Android emulator (or connect a device)
+flutter emulators --launch <name>  # optional if you already started one
+
+# If your emulator supports fingerprint, simulate a fingerprint touch when prompted
+adb -s 127.0.0.1:6555 emu finger touch 1
+
+# From the project root run the example integration test
+cd example
+flutter drive --driver=test_driver/integration_test.dart --target=integration_test/zk_vault_integration_test.dart -d 127.0.0.1:6555
+```
+
+iOS simulator / device
+
+```bash
+# Enroll biometrics in the Simulator: Simulator > Features > Face ID / Touch ID > Enrolled
+
+# Run the example app tests (simulator/device must be connected)
+cd example
+flutter drive --driver=test_driver/integration_test.dart --target=integration_test/zk_vault_integration_test.dart -d <device-id>
+```
+
+Notes
+
+- The integration tests detect absence of native KMS and will continue (log/skip) on emulators without hardware-backed keys.
+- For full native KMS validation, run the tests on a real device with biometrics enrolled.
+
+Publishing & GitHub Release
+
+- After pushing a release tag (e.g. `v0.1.3`) create a GitHub Release using the `RELEASE_NOTES_v0.1.3.md` content and attach the same tag. The repository has already been tagged and pushed for v0.1.3.
